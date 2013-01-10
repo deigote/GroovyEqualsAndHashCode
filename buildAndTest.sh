@@ -1,3 +1,5 @@
 #!/bin/bash
-find classes -name *.class -delete
-groovyc -d classes es/osoco/transform/*.groovy && groovy -cp classes es/osoco/transform/TestEqualsAndHashCode
+source "$(dirname $0)"/readProjectProperties.sh
+find $classesDir -name *.class -delete
+groovyc -d $classesDir $sourceDir/es/osoco/transform/*.groovy && \
+	groovy -cp $classesDir $sourceDir/es/osoco/transform/TestEqualsAndHashCode

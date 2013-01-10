@@ -19,47 +19,56 @@ public class EqualsAndHashCodeTransformation implements ASTTransformation
 	private final static String unexpectedErrorMessage =
 		"Unexpected error when applying transformation ${EqualsAndHashCodeTransformation.class.name} to class "
 	
-	void visit(ASTNode[] astNodes, SourceUnit sourceUnit) 
+	void visit(ASTNode[] astNodes, SourceUnit sourceUnit, astNodesList = Arrays.asList(astNodes))
 	{	
-		def (annotationNode, classNode) = astNodes?.size() >= 2 ? astNodes[0..1] : [null, null]
+		def (annotationNode, classNode) = [astNodesList.getAt(0), astNodesList.getAt(1)]
 		try
 		{
-			if (annotationNode && classNode &&
+			if (classNode instanceof ClassNode &&
 				annotationNode instanceof AnnotationNode &&
-				annotationNode.classNode?.name == EqualsAndHashCode.class.name &&
-				classNode instanceof ClassNode)
+				annotationNode.classNode?.name == EqualsAndHashCode.class.name)
 			{
-				findAstAnnotationInstance(classNode).with
+				withMemberValues(annotationNode)
 				{
-					annotationInstance ->
-					Collection<String> includes = annotationInstance.includes()
-					String logLevel = annotationInstance.logLevel()?.toLowerCase()
+					includes, logLevel ->
 					addEqualsMethod(classNode, includes, logLevel)
 					addHashCodeMethod(classNode, includes, logLevel)
-
-					/*
-					 def includesExpression = annotationNode.getMember('includes')
-					 includes = includesExpression?.respondsTo('getExpressions') ?
-						 includesExpression?.getExpressions()*.value :
-						 includesExpression ? [includesExpression?.value] : null
-					 */
 				}
 			}
 			else
 			{
 				addError(sourceUnit, , annotationNode)
 			}
-		} 
+		}
 		catch (t)
 		{
 			addError(sourceUnit, unexpectedErrorMessage + classNode?.name, annotationNode)
-			t.printStackTrace();
+			t.printStackTrace()
 		}
+	}
+	
+	private withMemberValues(annotationNode, Closure memberValuesDelegate)
+	{
+		memberValuesDelegate(
+			getMemberValues(annotationNode, 'includes', ['id']),
+			getMemberValues(annotationNode, 'logLevel').getAt(0)
+		)
+	}
+	
+	private List<String> getMemberValues(annotationNode, memberName, defaultValue = null,
+		memberExpr = annotationNode.getMember(memberName))
+	{
+		(
+			memberExpr?.respondsTo('getExpressions') ? memberExpr?.getExpressions()*.value :
+			memberExpr ? [memberExpr?.value] : null
+		)?:defaultValue
 	}
 
 	private findAstAnnotationInstance(classNode) 
 	{
-		Class.forName(classNode.name).annotations.find { it  instanceof EqualsAndHashCode }
+		//Class.forName(classNode.name).annotations.find { it  instanceof EqualsAndHashCode }
+		//Collection<String> includes = annotationInstance.includes()
+		//String logLevel = annotationInstance.logLevel()?.toLowerCase()
 	}
 	
 	protected void addError(sourceUnit, String msg, ASTNode expr) 
@@ -72,10 +81,13 @@ public class EqualsAndHashCodeTransformation implements ASTTransformation
 	
 	MethodNode addEqualsMethod(ClassNode declaringClass, List<String> includes, String logLevel)
 	{
-		addMethod(declaringClass, 'equals', includes,
+		addMethod(declaringClass, 'equals', includes)
 		{ 
 			className, includesString ->
 			"""
+			package $declaringClass.packageName
+
+			class $declaringClass.nameWithoutPackage {
             boolean equals(Object obj)
 			{
 				obj != null && (
@@ -94,8 +106,9 @@ public class EqualsAndHashCodeTransformation implements ASTTransformation
 					}
 				)
 			}
+}
         	"""
-        })
+        }
 	}
 	
 	MethodNode addHashCodeMethod(ClassNode declaringClass, List<String> includes, String logLevel)
